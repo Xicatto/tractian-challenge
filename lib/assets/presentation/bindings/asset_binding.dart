@@ -8,9 +8,11 @@ import 'package:tractian_mobile/assets/presentation/controllers/asset_controller
 class AssetBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut(() => RemoteAssetDataSource());
-    Get.lazyPut(() => AssetRepositoryImpl(Get.find<RemoteAssetDataSource>()));
-    Get.lazyPut(() => GetAssetsUseCase(Get.find<AssetRepositoryImpl>()));
+    Get.put(RemoteAssetDataSource());
+    Get.put(
+      AssetRepositoryImpl(Get.find<RemoteAssetDataSource>()),
+    );
+    Get.put(GetAssetsUseCase(Get.find<AssetRepositoryImpl>()));
     Get.put(AssetController(
         Get.find<GetAssetsUseCase>(), Get.find<GetLocationsUseCase>()));
   }

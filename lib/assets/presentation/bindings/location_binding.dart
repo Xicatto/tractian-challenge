@@ -6,9 +6,8 @@ import 'package:tractian_mobile/assets/domain/usecases/get_locations_usecase.dar
 class LocationBinding extends Bindings {
   @override
   void dependencies() {
-    Get.lazyPut(() => RemoteLocationDatasource());
-    Get.lazyPut(
-        () => LocationRepositoryImpl(Get.find<RemoteLocationDatasource>()));
-    Get.lazyPut(() => GetLocationsUseCase(Get.find<LocationRepositoryImpl>()));
+    Get.put(RemoteLocationDatasource());
+    Get.put(LocationRepositoryImpl(Get.find<RemoteLocationDatasource>()));
+    Get.put(GetLocationsUseCase(Get.find<LocationRepositoryImpl>()));
   }
 }

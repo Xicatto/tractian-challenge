@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_fancy_tree_view/flutter_fancy_tree_view.dart';
 import 'package:get/get.dart';
+import 'package:tractian_mobile/assets/domain/entities/asset_entity.dart';
 import 'package:tractian_mobile/assets/presentation/controllers/asset_controller.dart';
 
 class AssetPage extends GetView<AssetController> {
@@ -46,50 +47,75 @@ class AssetPage extends GetView<AssetController> {
                 ),
               ),
               Obx(
-                () => Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    SegmentedButton<Sensor>(
-                      segments: [
-                        ButtonSegment(
-                          value: Sensor.energy,
-                          label: Text('Sensor de Energia'),
-                          icon: Icon(Icons.bolt_outlined),
-                        ),
-                        ButtonSegment(
-                          value: Sensor.critical,
-                          label: Text('Crítico'),
-                          icon: Icon(Icons.error_outline),
-                        ),
-                      ],
-                      emptySelectionAllowed: true,
-                      selected: controller.sensorView.value ?? {},
-                      onSelectionChanged: (newSelection) {
-                        controller.sensorView.value = newSelection;
-                      },
-                      showSelectedIcon: false,
-                    ),
-                  ],
+                () => Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: SegmentedButton<SensorStatus>(
+                    segments: [
+                      ButtonSegment(
+                        value: Sensor.energy,
+                        label: Text('Sensor de Energia'),
+                        icon: Icon(Icons.bolt_outlined),
+                      ),
+                      ButtonSegment(
+                        value: Status.alert,
+                        label: Text('Crítico'),
+                        icon: Icon(Icons.error_outline),
+                      ),
+                    ],
+                    emptySelectionAllowed: true,
+                    selected: controller.sensorView.value ?? {},
+                    onSelectionChanged: (newSelection) {
+                      controller.sensorView.value = newSelection;
+                      controller.filter.value = null;
+                      if (newSelection.isEmpty) {
+                        controller.treeController.rebuild();
+                        return;
+                      }
+
+                      if (newSelection.first == Sensor.energy) {
+                        controller.filter.value = controller.treeController
+                            .search((node) =>
+                                (node.asset?.sensorType == Sensor.energy.name));
+                        controller.treeController.rebuild();
+                        return;
+                      }
+
+                      controller.filter.value =
+                          controller.treeController.search((node) {
+                        final isEnergyType =
+                            node.asset?.status == Status.alert.name;
+
+                        return isEnergyType;
+                      });
+
+                      controller.treeController.rebuild();
+                    },
+                    showSelectedIcon: false,
+                  ),
                 ),
               ),
               Divider(),
               Expanded(
-                child: AnimatedTreeView<MyNode>(
+                child: TreeView<MyNode>(
                   treeController: controller.treeController,
                   nodeBuilder: (BuildContext context, TreeEntry<MyNode> entry) {
-                    return TreeTile(
-                      entry: entry,
-                      match: controller.filter.value?.matchOf(entry.node),
-                      searchPattern: controller.searchPattern.value,
-                    );
-                  },
-                  duration:
-                      const Duration(milliseconds: 300), // Adjust as needed
+                    final filter = controller.filter.value;
+                    if (filter == null || filter.hasMatch(entry.node)) {
+                      return TreeTile(
+                        entry: entry,
+                        match: filter?.matchOf(entry.node),
+                      );
+                    }
+                    return SizedBox.shrink();
+                  }, // Adjust as needed
                 ),
               ),
             ],
           );
         },
+        onError: (error) => Center(
+          child: Text(error.toString()),
+        ),
       ),
     );
   }
@@ -100,19 +126,60 @@ class TreeTile extends StatelessWidget {
     super.key,
     required this.entry,
     required this.match,
-    required this.searchPattern,
   });
 
   final TreeEntry<MyNode> entry;
   final TreeSearchMatch? match;
-  final Pattern? searchPattern;
 
   bool get shouldShowBadge =>
       !entry.isExpanded && (match?.subtreeMatchCount ?? 0) > 0;
 
-  bool shouldShowMatch() {
+  bool get shouldShowMatch {
     if (match != null && match!.isDirectMatch) return true;
     return false;
+  }
+
+  String get getImageIcon {
+    final value = entry.node;
+
+    if (value.location != null) {
+      return 'location.png';
+    }
+
+    final asset = value.asset!;
+    return (asset.sensorType == null &&
+            (asset.locationId != null || asset.parentId != null))
+        ? 'asset.png'
+        : 'component.png';
+  }
+
+  Widget get showSensorIcon {
+    final value = entry.node;
+    if (value.asset != null) {
+      final asset = value.asset!;
+      if (asset.sensorType == Sensor.energy.name &&
+          asset.status != Status.alert.name) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(
+            Icons.bolt_outlined,
+            color: Colors.green,
+            size: 24,
+          ),
+        );
+      } else if (asset.status == Status.alert.name) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Icon(
+            Icons.circle,
+            color: Colors.red,
+            size: 12,
+          ),
+        );
+      }
+    }
+
+    return SizedBox.shrink();
   }
 
   @override
@@ -121,11 +188,17 @@ class TreeTile extends StatelessWidget {
       entry: entry,
       child: Row(
         children: [
-          ExpandIcon(
-            key: GlobalObjectKey(entry.node),
-            isExpanded: entry.isExpanded,
-            onPressed: (_) => TreeViewScope.of<MyNode>(context)
-              ..controller.toggleExpansion(entry.node),
+          Visibility(
+            visible: entry.hasChildren,
+            maintainSize: true,
+            maintainAnimation: true,
+            maintainState: true,
+            child: ExpandIcon(
+              key: GlobalObjectKey(entry.node),
+              isExpanded: entry.isExpanded,
+              onPressed: (_) => TreeViewScope.of<MyNode>(context)
+                ..controller.toggleExpansion(entry.node),
+            ),
           ),
           if (shouldShowBadge)
             Padding(
@@ -138,22 +211,26 @@ class TreeTile extends StatelessWidget {
           Flexible(
             child: Row(
               children: [
-                Icon(
-                  Icons.location_on_outlined,
-                  color: shouldShowMatch() ? Colors.green : null,
+                Image.asset(
+                  'assets/$getImageIcon',
+                  scale: 1.2,
                 ),
                 SizedBox(
                   width: 8,
                 ),
-                Text.rich(
-                  style: TextStyle(
-                    color: shouldShowMatch() ? Colors.green : null,
-                    fontWeight: shouldShowMatch() ? FontWeight.bold : null,
-                  ),
-                  TextSpan(
-                    text: entry.node.location.name,
+                Flexible(
+                  child: Text.rich(
+                    softWrap: true,
+                    style: TextStyle(
+                      color: shouldShowMatch ? Colors.green : null,
+                      fontWeight: shouldShowMatch ? FontWeight.bold : null,
+                    ),
+                    TextSpan(
+                      text: entry.node.asset?.name ?? entry.node.location?.name,
+                    ),
                   ),
                 ),
+                showSensorIcon,
               ],
             ),
           ),
@@ -161,34 +238,4 @@ class TreeTile extends StatelessWidget {
       ),
     );
   }
-
-  // InlineSpan buildTextSpan() {
-  //   final String title = entry.node.location.name;
-
-  //   if (searchPattern == null) {
-  //     return TextSpan(text: title);
-  //   }
-
-  //   final List<InlineSpan> spans = <InlineSpan>[];
-  //   bool hasAnyMatches = false;
-
-  //   title.splitMapJoin(
-  //     searchPattern!,
-  //     onMatch: (Match match) {
-  //       hasAnyMatches = true;
-  //       spans.add(TextSpan(text: match.group(0)!));
-  //       return '';
-  //     },
-  //     onNonMatch: (String text) {
-  //       spans.add(TextSpan(text: text));
-  //       return '';
-  //     },
-  //   );
-
-  //   if (hasAnyMatches) {
-  //     return TextSpan(children: spans);
-  //   }
-
-  //   return TextSpan(text: title);
-  // }
 }

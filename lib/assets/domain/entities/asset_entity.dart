@@ -1,3 +1,15 @@
+sealed class SensorStatus {}
+
+enum Sensor implements SensorStatus {
+  energy,
+  vibration,
+}
+
+enum Status implements SensorStatus {
+  operating,
+  alert,
+}
+
 class AssetEntity {
   final String? gatewayId;
   final String id;
