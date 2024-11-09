@@ -10,7 +10,7 @@ enum Status implements SensorStatus {
   alert,
 }
 
-class AssetEntity {
+class Asset {
   final String? gatewayId;
   final String id;
   final String? locationId;
@@ -20,7 +20,7 @@ class AssetEntity {
   final String? sensorType;
   final String? status;
 
-  AssetEntity({
+  Asset({
     this.gatewayId,
     required this.id,
     this.locationId,
@@ -31,8 +31,8 @@ class AssetEntity {
     this.status,
   });
 
-  factory AssetEntity.fromJson(Map<String, dynamic> json) {
-    return AssetEntity(
+  factory Asset.fromJson(Map<String, dynamic> json) {
+    return Asset(
       gatewayId: json['gatewayId'],
       id: json['id'],
       locationId: json['locationId'],

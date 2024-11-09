@@ -3,10 +3,10 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:flutter_fancy_tree_view/flutter_fancy_tree_view.dart';
 import 'package:get/get.dart';
-import 'package:tractian_mobile/assets/domain/entities/asset_entity.dart';
-import 'package:tractian_mobile/assets/domain/entities/location_entity.dart';
-import 'package:tractian_mobile/assets/domain/usecases/get_assets_usecase.dart';
-import 'package:tractian_mobile/assets/domain/usecases/get_locations_usecase.dart';
+import 'package:tractian_mobile/assets/model/asset_entity.dart';
+import 'package:tractian_mobile/assets/model/location_entity.dart';
+import 'package:tractian_mobile/assets/provider/asset_provider.dart';
+import 'package:tractian_mobile/assets/provider/location_provider.dart';
 
 class MyNode {
   MyNode({
@@ -15,24 +15,19 @@ class MyNode {
     List<MyNode>? children,
   }) : children = <MyNode>[...?children];
 
-  final LocationEntity? location;
-  final AssetEntity? asset;
+  final Location? location;
+  final Asset? asset;
   final List<MyNode> children;
 }
 
 class AssetController extends GetxController with StateMixin {
-  final GetAssetsUseCase getAssetsUseCase;
-  final GetLocationsUseCase getLocationsUseCase;
-
-  Rxn<Set<SensorStatus>> sensorView = Rxn<Set<SensorStatus>>();
+  Rx<Set<SensorStatus>> sensorView = Rx<Set<SensorStatus>>({});
   final TextEditingController searchBarTextEditingController =
       TextEditingController();
   late final TreeController<MyNode> treeController;
   late final List<MyNode> root;
 
   var filter = Rxn<TreeSearchResult<MyNode>>();
-
-  AssetController(this.getAssetsUseCase, this.getLocationsUseCase);
 
   @override
   void onClose() {
@@ -49,11 +44,23 @@ class AssetController extends GetxController with StateMixin {
   @override
   void onInit() async {
     super.onInit();
+    fetchData();
+  }
+
+  fetchData() async {
     final companyId = Get.parameters['companyId'] ?? '';
 
     try {
-      final locations = await getLocationsUseCase.execute(companyId);
-      final assets = await getAssetsUseCase.execute(companyId);
+      final locationsRes = await LocationProvider().fetchLocations(companyId);
+      final locations = (locationsRes.body as List).map((location) {
+        return Location.fromJson(location);
+      }).toList();
+
+      final assetsRes = await AssetProvider().fetchAssets(companyId);
+      final assets = (assetsRes.body as List).map((asset) {
+        return Asset.fromJson(asset);
+      }).toList();
+
       root = buildTree(locations, assets);
       treeController = TreeController<MyNode>(
         roots: root,
@@ -75,27 +82,9 @@ class AssetController extends GetxController with StateMixin {
     return node.children;
   }
 
-  void search(String query) {
-    filter.value = null;
-
-    filter.value = treeController.search((node) {
-      final locationName = node.location?.name.toLowerCase();
-      final assetName = node.asset?.name.toLowerCase();
-
-      return (locationName != null && locationName.contains(query)) ||
-          (assetName != null && assetName.contains(query)) &&
-              (sensorView.value != null &&
-                  (sensorView.value!.first == Sensor.energy ||
-                      sensorView.value!.first == Status.alert));
-    });
-
-    treeController.rebuild();
-  }
-
   void clearSearch() {
-    if (filter.value == null) return;
-
     filter.value = null;
+    sensorView.value = {};
     treeController.rebuild();
     searchBarTextEditingController.clear();
   }
@@ -104,17 +93,57 @@ class AssetController extends GetxController with StateMixin {
     final String query =
         searchBarTextEditingController.text.toLowerCase().trim();
 
-    if (query.isEmpty) {
-      // clearSearch();
+    if (query.isEmpty && sensorView.value.isEmpty) {
+      clearSearch();
       return;
     }
 
-    search(query);
+    applyCombinedFilters(sensorView.value);
   }
 
-  List<MyNode> buildTree(
-      List<LocationEntity> locations, List<AssetEntity> assets) {
-    // Mapping locations and assets
+  void applyCombinedFilters(Set<SensorStatus> newSelection) {
+    final String query =
+        searchBarTextEditingController.text.toLowerCase().trim();
+    filter.value = null;
+
+    if (query.isEmpty && newSelection.isEmpty) {
+      clearSearch();
+      return;
+    }
+
+    if (newSelection.isEmpty) {
+      filter.value = treeController.search((node) {
+        final locationName = node.location?.name.toLowerCase();
+        final assetName = node.asset?.name.toLowerCase();
+
+        return (locationName != null && locationName.contains(query)) ||
+            (assetName != null && assetName.contains(query));
+      });
+      treeController.rebuild();
+      return;
+    }
+
+    filter.value = treeController.search((node) {
+      final asset = node.asset;
+      if (asset == null) return false;
+
+      final assetName = asset.name.toLowerCase();
+      if (assetName.isEmpty || !assetName.contains(query)) {
+        return false; // Early return if name doesn't match query
+      }
+
+      // Check sensor or status based on the first sensorView value
+      if (sensorView.value.first == Sensor.energy) {
+        return asset.sensorType == Sensor.energy.name;
+      } else {
+        return asset.status == Status.alert.name;
+      }
+    });
+
+    treeController.rebuild();
+  }
+
+  List<MyNode> buildTree(List<Location> locations, List<Asset> assets) {
     Map<String, MyNode> mapNodes = {
       for (var location in locations) location.id: MyNode(location: location),
       for (var asset in assets) asset.id: MyNode(asset: asset),
@@ -122,7 +151,6 @@ class AssetController extends GetxController with StateMixin {
 
     List<MyNode> root = [];
 
-    // Process both locations and assets
     for (final location in locations) {
       final currentNode = mapNodes[location.id]!;
 

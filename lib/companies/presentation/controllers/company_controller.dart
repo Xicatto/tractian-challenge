@@ -1,21 +1,23 @@
 import 'package:get/get.dart';
-import 'package:tractian_mobile/companies/domain/entities/company_entity.dart';
-import 'package:tractian_mobile/companies/domain/usecases/get_companies_usecase.dart';
+import 'package:tractian_mobile/companies/model/company.dart';
+import 'package:tractian_mobile/companies/provider/company_provider.dart';
 
-class CompanyController extends GetxController
-    with StateMixin<List<CompanyEntity>> {
-  final GetCompaniesUseCase getCompaniesUseCase;
-
-  CompanyController(this.getCompaniesUseCase);
-
+class CompanyController extends GetxController with StateMixin<List<Company>> {
   @override
   void onInit() {
-    getCompaniesUseCase.execute().then((result) async {
-      final companies = result;
-      change(companies, status: RxStatus.success());
-    }, onError: (err) {
-      change(null, status: RxStatus.error(err.toString()));
-    });
     super.onInit();
+    fetchCompanies();
+  }
+
+  fetchCompanies() async {
+    try {
+      final response = await CompanyProvider().fetchCompanies();
+      final companies = (response.body as List).map((company) {
+        return Company.fromJson(company);
+      }).toList();
+      change(companies, status: RxStatus.success());
+    } catch (e) {
+      change(null, status: RxStatus.error(e.toString()));
+    }
   }
 }

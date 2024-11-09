@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_fancy_tree_view/flutter_fancy_tree_view.dart';
 import 'package:get/get.dart';
-import 'package:tractian_mobile/assets/domain/entities/asset_entity.dart';
+import 'package:tractian_mobile/assets/model/asset_entity.dart';
 import 'package:tractian_mobile/assets/presentation/controllers/asset_controller.dart';
 
-class AssetPage extends GetView<AssetController> {
+class AssetPage extends GetWidget<AssetController> {
   const AssetPage({super.key});
 
   @override
@@ -63,32 +63,10 @@ class AssetPage extends GetView<AssetController> {
                       ),
                     ],
                     emptySelectionAllowed: true,
-                    selected: controller.sensorView.value ?? {},
+                    selected: controller.sensorView.value,
                     onSelectionChanged: (newSelection) {
                       controller.sensorView.value = newSelection;
-                      controller.filter.value = null;
-                      if (newSelection.isEmpty) {
-                        controller.treeController.rebuild();
-                        return;
-                      }
-
-                      if (newSelection.first == Sensor.energy) {
-                        controller.filter.value = controller.treeController
-                            .search((node) =>
-                                (node.asset?.sensorType == Sensor.energy.name));
-                        controller.treeController.rebuild();
-                        return;
-                      }
-
-                      controller.filter.value =
-                          controller.treeController.search((node) {
-                        final isEnergyType =
-                            node.asset?.status == Status.alert.name;
-
-                        return isEnergyType;
-                      });
-
-                      controller.treeController.rebuild();
+                      controller.applyCombinedFilters(newSelection);
                     },
                     showSelectedIcon: false,
                   ),
